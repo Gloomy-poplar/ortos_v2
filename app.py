@@ -31,6 +31,7 @@ bitrix_chat_service = BitrixChatService()
 def get_embeddings_bot_service() -> EmbeddingsBotService:
     global embeddings_bot_service
     if embeddings_bot_service is None:
+        print("🚀 Создаем экземпляр EmbeddingsBotService...")
         embeddings_bot_service = EmbeddingsBotService()
     return embeddings_bot_service
 
@@ -53,10 +54,12 @@ def telegram_webhook(token):
 
         if text:
             service = get_embeddings_bot_service()
+            print("🧠 EmbeddingsBotService получен")
             ai_response = service.process_question(
                 text, user_id=str(chat_id))
             log_message(user_name, chat_id, text, ai_response)
 
+            print(f"📤 Отправляем ответ в Telegram: {ai_response[:100]}")
             requests.post(
                 Config.TELEGRAM_URL + "/sendMessage",
                 json={"chat_id": chat_id, "text": ai_response}

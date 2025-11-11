@@ -464,24 +464,30 @@ class EmbeddingsBotService:
         self.client: Optional[Groq] = None
 
     def _initialize_embeddings(self):
+        print("⚙️ Инициализация EmbeddingsBotService...")
         service = None
         client = None
         try:
             service = EmbeddingsService()
+            print("✅ EmbeddingsService создан")
             loaded = False
             try:
                 loaded = service.load_indices()
+                print(f"📦 Индексы загружены: {loaded}")
             except Exception as e:
                 print(f"❌ Ошибка загрузки индексов: {e}")
             if not loaded:
                 try:
+                    print("🔨 Строим индексы...")
                     service.build_indices()
                     service.save_indices()
+                    print("✅ Индексы созданы и сохранены")
                 except Exception as e:
                     print(f"❌ Ошибка создания индексов: {e}")
             if Config.GROQ_API_KEY:
                 try:
                     client = Groq(api_key=Config.GROQ_API_KEY)
+                    print("✅ Groq клиент инициализирован")
                 except Exception as e:
                     print(f"❌ Ошибка инициализации Groq: {e}")
         except Exception as e:
@@ -490,9 +496,11 @@ class EmbeddingsBotService:
             with self._init_lock:
                 if service and not self.embeddings_service:
                     self.embeddings_service = service
+                    print("✅ EmbeddingsService активирован")
                 if client:
                     self.client = client
                 self._initializing = False
+                print("⚙️ Инициализация EmbeddingsBotService завершена")
 
     def _ensure_initialized(self) -> bool:
         if self.embeddings_service is not None:
@@ -507,15 +515,19 @@ class EmbeddingsBotService:
         return False
 
     def process_question(self, question: str, user_id: str = "telegram") -> str:
+        print(f"📝 [EmbeddingsBotService] Получен вопрос от {user_id}: {question}")
         if not self._ensure_initialized():
+            print("⏳ EmbeddingsService еще инициализируется")
             return "🔄 Бот запускается, попробуйте еще раз через минуту."
         query = question.strip()
         if not query:
             return "Пожалуйста, напишите вопрос."
         if not self.embeddings_service:
+            print("⚠️ EmbeddingsService недоступен")
             return "Сервис поиска временно недоступен."
         try:
             results = self.embeddings_service.search(query, top_k=7)
+            print(f"🔍 Найдено результатов: {len(results)}")
         except Exception as e:
             print(f"❌ Ошибка поиска: {e}")
             return "Произошла ошибка при поиске. Попробуйте позже."
@@ -525,11 +537,15 @@ class EmbeddingsBotService:
         summary = self._format_results(results)
         parts = [p for p in [answer, summary] if p]
         if not parts:
+            print("⚠️ Ответ не сформирован")
             return "Информация обработана, но ответ не сформирован."
-        return "\n\n".join(parts)
+        response_text = "\n\n".join(parts)
+        print(f"✅ Ответ сформирован ({len(response_text)} символов)")
+        return response_text
 
     def _generate_answer(self, question: str, results: List[Tuple[Dict[str, Any], float]]) -> str:
         if not self.client or not results:
+            print("⚠️ Нет клиента или результатов для генерации ответа")
             return ""
         context_parts = []
         for doc, score in results[:5]:

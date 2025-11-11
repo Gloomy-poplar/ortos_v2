@@ -1,6 +1,0 @@
-{
-  "model_name": "intfloat/multilingual-e5-base",
-  "embedding_dim": 768,
-  "total_documents": 27,
-  "has_bm25": true
-}
