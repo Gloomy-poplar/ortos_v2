@@ -252,7 +252,7 @@ class EmbeddingsService:
         """Публичный метод для создания индексов"""
         self._build_indices()
 
-    def save_indices(self, index_dir: str = "d:\\ortos-bot\\data\\embeddings_v2") -> None:
+    def save_indices(self, index_dir: str = os.path.join(os.path.dirname(__file__), "..", "data", "embeddings_v2")) -> None:
         """Сохраняет индексы на диск"""
         Path(index_dir).mkdir(parents=True, exist_ok=True)
 
@@ -273,7 +273,7 @@ class EmbeddingsService:
 
         print(f"✅ Метаданные сохранены")
 
-    def load_indices(self, index_dir: str = "d:\\ortos-bot\\data\\embeddings_v2") -> bool:
+    def load_indices(self, index_dir: str = os.path.join(os.path.dirname(__file__), "..", "data", "embeddings_v2")) -> bool:
         """Загружает индексы с диска, если они существуют"""
         semantic_path = f"{index_dir}/semantic.faiss"
         metadata_path = f"{index_dir}/metadata.json"

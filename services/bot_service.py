@@ -37,8 +37,7 @@ class BotService:
         self.appointment_service = AppointmentService()
         self.quick_answers = Config.QUICK_ANSWERS
         self.user_sessions = {}  # Для хранения временных данных пользователей
-        # Загружаем данные из файлов (для RAG)
-        self.data = self._load_data()
+
 
 
     def process_question(self, question: str, user_id: str = "default") -> str:
@@ -458,9 +457,7 @@ class BotService:
 
 class EmbeddingsBotService:
     def __init__(self):
-        self.embeddings_service = EmbeddingsService(
-            knowledge_base_path="d:\\ortos-bot\\data\\knowledge_base.json"
-        )
+        self.embeddings_service = EmbeddingsService()
         loaded = False
         try:
             loaded = self.embeddings_service.load_indices()
