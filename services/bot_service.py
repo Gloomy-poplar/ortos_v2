@@ -459,20 +459,15 @@ class BotService:
 class EmbeddingsBotService:
     def __init__(self):
         self._init_lock = threading.Lock()
+        self._initializing = False
         self.embeddings_service: Optional[EmbeddingsService] = None
-        self.client = None
+        self.client: Optional[Groq] = None
 
-    def _ensure_initialized(self):
-        if self.embeddings_service is not None:
-            return
-        with self._init_lock:
-            if self.embeddings_service is not None:
-                return
-            try:
-                service = EmbeddingsService()
-            except Exception as e:
-                print(f"❌ Ошибка инициализации EmbeddingsService: {e}")
-                return
+    def _initialize_embeddings(self):
+        service = None
+        client = None
+        try:
+            service = EmbeddingsService()
             loaded = False
             try:
                 loaded = service.load_indices()
@@ -484,22 +479,41 @@ class EmbeddingsBotService:
                     service.save_indices()
                 except Exception as e:
                     print(f"❌ Ошибка создания индексов: {e}")
-            client = None
             if Config.GROQ_API_KEY:
                 try:
                     client = Groq(api_key=Config.GROQ_API_KEY)
                 except Exception as e:
                     print(f"❌ Ошибка инициализации Groq: {e}")
-            self.embeddings_service = service
-            self.client = client
+        except Exception as e:
+            print(f"❌ Ошибка инициализации EmbeddingsService: {e}")
+        finally:
+            with self._init_lock:
+                if service and not self.embeddings_service:
+                    self.embeddings_service = service
+                if client:
+                    self.client = client
+                self._initializing = False
+
+    def _ensure_initialized(self) -> bool:
+        if self.embeddings_service is not None:
+            return True
+        with self._init_lock:
+            if self.embeddings_service is not None:
+                return True
+            if self._initializing:
+                return False
+            self._initializing = True
+            threading.Thread(target=self._initialize_embeddings, daemon=True).start()
+        return False
 
     def process_question(self, question: str, user_id: str = "telegram") -> str:
-        self._ensure_initialized()
-        if not self.embeddings_service:
-            return "Сервис поиска временно недоступен."
+        if not self._ensure_initialized():
+            return "🔄 Бот запускается, попробуйте еще раз через минуту."
         query = question.strip()
         if not query:
             return "Пожалуйста, напишите вопрос."
+        if not self.embeddings_service:
+            return "Сервис поиска временно недоступен."
         try:
             results = self.embeddings_service.search(query, top_k=7)
         except Exception as e:
