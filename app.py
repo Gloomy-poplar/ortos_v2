@@ -1,79 +1,368 @@
+from services.bitrix_chat_service import BitrixChatService
+from utils.logger import log_message
+from services.bot_service import BotService, EmbeddingsBotService
+from config import Config
 import subprocess
-import os
+import sys
 import requests
 from flask import Flask, request, jsonify, redirect
 import json
-from typing import Dict
-from config import Config
-from services.bot_service import BotService
-from utils.logger import log_message
-from services.bitrix_chat_service import BitrixChatService
+from typing import Dict, Optional
 from datetime import datetime
-import sys
+import os
+import threading
+import time
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-print("[INFO] Starting ORTOS Bot Application...")
-
-required_vars = ['GROQ_API_KEY', 'TELEGRAM_TOKEN']
-missing_vars = []
-
-for var in required_vars:
-    if not os.environ.get(var):
-        missing_vars.append(var)
-
-if missing_vars:
-    print(f"[ERROR] CRITICAL: Missing environment variables: {', '.join(missing_vars)}")
-    print("[WARN] Application will continue but some features may not work")
-else:
-    print("[OK] All critical environment variables are set")
-
-print(f"[INFO] Config loaded: TELEGRAM_TOKEN = {bool(Config.TELEGRAM_TOKEN)}")
-print(f"[INFO] Config loaded: GROQ_API_KEY = {bool(Config.GROQ_API_KEY)}")
+print("🚀 Starting ORTOS Bot Application...")
+print(f"📊 Config loaded: TELEGRAM_TOKEN = {bool(Config.TELEGRAM_TOKEN)}")
+print(f"📊 Config loaded: GROQ_API_KEY = {bool(Config.GROQ_API_KEY)}")
 
 app = Flask(__name__)
+bot_service = BotService()
+embeddings_bot_service: Optional[EmbeddingsBotService] = None
+bitrix_chat_service = BitrixChatService()
 
-bot_service = None
-bitrix_chat_service = None
+_init_lock = threading.Lock()
+_init_started = False
 
-def init_services():
-    global bot_service, bitrix_chat_service
+
+def get_embeddings_bot_service() -> EmbeddingsBotService:
+    global embeddings_bot_service
+    if embeddings_bot_service is None:
+        print("🚀 Создаем экземпляр EmbeddingsBotService...")
+        embeddings_bot_service = EmbeddingsBotService()
+    return embeddings_bot_service
+
+
+def start_background_initialization():
+    """Запускает инициализацию в фоновом потоке"""
+    global _init_started
+    with _init_lock:
+        if _init_started:
+            return
+        _init_started = True
+
+    def init_thread():
+        try:
+            print("⏳ Фоновая инициализация EmbeddingsBotService начата...")
+            get_embeddings_bot_service()
+            print("✅ Фоновая инициализация завершена")
+        except Exception as e:
+            print(f"❌ Ошибка фоновой инициализации: {e}")
+
+    thread = threading.Thread(target=init_thread, daemon=True)
+    thread.start()
+
+
+@app.route('/telegram/<token>', methods=['POST'])
+def telegram_webhook(token):
     try:
-        print("[INFO] Initializing BotService...")
-        bot_service = BotService()
-        print("[OK] BotService initialized")
-    except Exception as e:
-        print(f"[ERROR] Error initializing BotService: {e}")
-        bot_service = None
+        if token != Config.TELEGRAM_TOKEN:
+            return jsonify({"error": "Invalid token"}), 403
 
-    try:
-        print("[INFO] Initializing BitrixChatService...")
-        bitrix_chat_service = BitrixChatService()
-        print("[OK] BitrixChatService initialized")
+        data = request.json
+        message = data.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        user_name = message.get('chat', {}).get('first_name', 'Unknown')
+        text = message.get('text', '')
+
+        print(f"👤 {user_name} ({chat_id}): {text}")
+
+        if text:
+            service = get_embeddings_bot_service()
+            print("🧠 EmbeddingsBotService получен")
+            ai_response = service.process_question(
+                text, user_id=str(chat_id))
+            log_message(user_name, chat_id, text, ai_response)
+
+            print(f"📤 Отправляем ответ в Telegram: {ai_response[:100]}")
+            requests.post(
+                Config.TELEGRAM_URL + "/sendMessage",
+                json={"chat_id": chat_id, "text": ai_response}
+            )
+
+        return jsonify({"status": "ok"})
+
     except Exception as e:
-        print(f"[ERROR] Error initializing BitrixChatService: {e}")
-        bitrix_chat_service = None
+        print(f"❌ Ошибка webhook: {e}")
+        return jsonify({"error": str(e)}), 500
+# Bitrix24 Open Lines Webhook
+
+
+@app.route('/bitrix/openlines_webhook', methods=['GET', 'POST'])
+def openlines_webhook():
+    try:
+        print("=" * 60)
+        print("🤖 BITRIX24 OPENLINES WEBHOOK CALLED!")
+
+        # Обработка GET запросов (OAuth callback)
+        if request.method == "GET":
+            code = request.args.get("code")
+            if code:
+                return redirect(f"/install?code={code}")
+            return "GET without code"
+
+        # Обработка POST запросов (сообщения из чата)
+        print(f"📦 Method: {request.method}")
+        print(f"📦 Headers: {dict(request.headers)}")
+        print(f"📦 Content-Type: {request.content_type}")
+        print(f"📦 Args: {request.args}")
+
+        # Извлекаем данные в правильном формате для Bitrix24
+        data = {}
+        if request.content_type == 'application/json':
+            data = request.json or {}
+        elif request.form:
+            data = request.form.to_dict()
+        else:
+            try:
+                raw_data = request.get_data(as_text=True)
+                if raw_data:
+                    data = json.loads(raw_data)
+            except:
+                pass
+
+        print(f"📨 Data: {data}")
+
+        # Обрабатываем событие сообщения
+        if data.get('event') == 'ONIMBOTMESSAGEADD':
+            return handle_bitrix_message(data)
+
+        # Обрабатываем приветственное сообщение
+        elif data.get('event') == 'ONIMBOTWELCOMEMESSAGE':
+            return handle_welcome_message(data)
+
+        else:
+            print(f"🤔 Unknown event: {data.get('event')}")
+
+        return jsonify({"status": "ok"})
+
+    except Exception as e:
+        print(f"❌ Bitrix webhook error: {e}")
+        import traceback
+        print(f"🔍 TRACEBACK: {traceback.format_exc()}")
+        return jsonify({"status": "error", "message": str(e)}), 200
+
+
+def handle_bitrix_message(data):
+    """Обработка сообщений из Bitrix24 Open Lines"""
+    message = data.get('data[PARAMS][MESSAGE]', '') or data.get(
+        'data', {}).get('MESSAGE', '')
+    dialog_id = data.get('data[PARAMS][DIALOG_ID]', '') or data.get(
+        'data', {}).get('DIALOG_ID', '')
+    user_id = data.get('data[USER][ID]', '') or data.get(
+        'data', {}).get('USER_ID', '')
+
+    print(f"💬 Message: '{message}', Dialog: {dialog_id}, User: {user_id}")
+
+    if not message or not dialog_id:
+        print("❌ No message or dialog_id")
+        return jsonify({"status": "ignored"}), 200
+
+    # Извлекаем chat_id из dialog_id (пример: "chat48" → 48)
+    chat_id = None
+    if dialog_id.startswith("chat"):
+        try:
+            chat_id = int(dialog_id.replace("chat", ""))
+        except ValueError:
+            print("⚠️ Не удалось извлечь chat_id из dialog_id")
+
+    # Обрабатываем команду перевода на оператора
+    message_lower = message.lower()
+    operator_keywords = ['оператор', 'человек', 'менеджер',
+                         'специалист', 'живой', 'человека', 'свяжите с оператором']
+
+    if any(keyword in message_lower for keyword in operator_keywords):
+        print("🔄 Transferring to operator...")
+        return transfer_to_operator(dialog_id, user_id, chat_id)
+
+    # Игнорируем команды
+    if message.startswith('/'):
+        print("🤖 Ignoring command")
+        return jsonify({"status": "ignored"}), 200
+
+    # Обрабатываем через AI бота
+    print(f"🤖 Processing message through AI...")
+    try:
+        ai_response = bot_service.process_question(
+            message, user_id=str(user_id or dialog_id))
+        print(f"🤖 AI Response: {ai_response[:100]}...")
+    except Exception as e:
+        print(f"❌ AI processing error: {e}")
+        ai_response = "Извините, произошла ошибка. Попробуйте позже."
+
+    # Отправляем ответ в Bitrix24 через imbot.message.add
+    print(f"📤 Sending response to Bitrix24...")
+    try:
+        response = requests.post(
+            "https://b24-sdgm61.bitrix24.by/rest/1/ummeoyhga98c0xoa/imbot.message.add",
+            json={
+                "BOT_ID": "36",
+                "CLIENT_ID": "hk6ov2nmxj1keecgsr8sknzjzs4xs94i",
+                "DIALOG_ID": dialog_id,
+                "MESSAGE": ai_response
+            },
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            print("✅ Response sent successfully via imbot.message.add")
+            log_message(f"BitrixUser_{user_id}",
+                        dialog_id, message, ai_response)
+        else:
+            print(
+                f"❌ Failed to send response: {response.status_code} - {response.text}")
+
+    except Exception as e:
+        print(f"❌ Error sending to Bitrix24: {e}")
+
+    return jsonify({"status": "ok"})
+
+
+def transfer_to_operator(dialog_id, user_id, chat_id):
+    """Перевод чата на операторов контакт-центра"""
+    try:
+        if not chat_id:
+            print("⚠️ chat_id не найден, невозможно передать оператору")
+            return jsonify({"status": "error", "message": "no_chat_id"}), 400
+
+        # 1️⃣ Сообщаем клиенту, что оператор подключится
+        client_text = "👩‍💼 Оператор сейчас подключится. Пожалуйста, ожидайте."
+        client_response = requests.post(
+            "https://b24-sdgm61.bitrix24.by/rest/1/ummeoyhga98c0xoa/imbot.message.add",
+            json={
+                "BOT_ID": "36",
+                "CLIENT_ID": "hk6ov2nmxj1keecgsr8sknzjzs4xs94i",
+                "DIALOG_ID": dialog_id,
+                "MESSAGE": client_text
+            },
+            timeout=10
+        )
+
+        if client_response.status_code != 200:
+            print(f"❌ Ошибка при отправке клиенту: {client_response.text}")
+            return jsonify({"status": "error"}), 500
+
+        print("✅ Сообщение клиенту отправлено")
+
+        # 2️⃣ Передаём чат в контакт-центр (именно этот метод)
+        transfer_response = requests.post(
+            "https://b24-sdgm61.bitrix24.by/rest/1/ummeoyhga98c0xoa/imopenlines.bot.session.operator",
+            json={
+                "CHAT_ID": chat_id
+            },
+            timeout=10
+        )
+
+        if transfer_response.status_code == 200:
+            print("✅ Чат передан контакт-центру")
+            print(f"📨 Ответ Bitrix24: {transfer_response.text}")
+        else:
+            print(
+                f"❌ Ошибка при передаче в контакт-центр: {transfer_response.text}")
+
+        return jsonify({"status": "transferred"})
+
+    except Exception as e:
+        print(f"❌ Ошибка перевода на оператора: {e}")
+        return jsonify({"status": "error"}), 500
+
+
+def handle_welcome_message(data):
+    """Приветственное сообщение"""
+    print("🎉 Welcome message triggered")
+
+    welcome_text = """👋 Добро пожаловать! 
+
+Я консультант ORTOS по индивидуальным стелькам. 
+
+Чем могу помочь?
+• 🩺 Консультация по стелькам
+• 💰 Узнать цены и сроки
+• 📍 Найти ближайший салон
+• 📞 Записаться на консультацию
+
+🤖 **Если нужен живой оператор, просто напишите: "Оператор"**
+
+Задайте ваш вопрос!"""
+
+    # Извлекаем dialog_id из данных
+    dialog_id = data.get('data[PARAMS][DIALOG_ID]', '') or data.get(
+        'data', {}).get('DIALOG_ID', '')
+
+    if dialog_id:
+        try:
+            response = requests.post(
+                "https://b24-sdgm61.bitrix24.by/rest/1/ummeoyhga98c0xoa/imbot.message.add",
+                json={
+                    "BOT_ID": "36",
+                    "CLIENT_ID": "hk6ov2nmxj1keecgsr8sknzjzs4xs94i",
+                    "DIALOG_ID": dialog_id,
+                    "MESSAGE": welcome_text
+                }
+            )
+            if response.status_code == 200:
+                print("✅ Welcome message sent")
+            else:
+                print(f"❌ Failed to send welcome message: {response.text}")
+        except Exception as e:
+            print(f"❌ Error sending welcome message: {e}")
+
+    return jsonify({"status": "welcome_sent"})
+
+# Остальные маршруты из оригинального кода
+
+
+@app.route('/bitrix/debug')
+def bitrix_debug():
+    """Детальная диагностика подключения к Битрикс24"""
+    try:
+        debug_info = []
+        debug_info.append("🔧 Детальная диагностика подключения к Битрикс24")
+        debug_info.append("=" * 50)
+
+        # Тест базового подключения
+        debug_info.append("\n1. 📡 Тестируем базовое подключение...")
+        test_url = f"{Config.BITRIX_WEBHOOK_URL}/profile"
+
+        try:
+            response = requests.post(test_url, timeout=10)
+            debug_info.append(f"   URL: {test_url}")
+            debug_info.append(f"   Статус: {response.status_code}")
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('result'):
+                    debug_info.append("   ✅ Вебхук работает корректно!")
+                else:
+                    debug_info.append(f"   ❌ Ошибка в ответе: {result}")
+            else:
+                debug_info.append(f"   ❌ HTTP ошибка: {response.status_code}")
+                debug_info.append(f"   📄 Ответ: {response.text}")
+
+        except Exception as e:
+            debug_info.append(f"   ❌ Ошибка подключения: {e}")
+
+        debug_info.append("\n" + "=" * 50)
+        html_content = "<h1>🔧 Диагностика Битрикс24</h1><pre style='background: #f5f5f5; padding: 20px; border-radius: 10px; white-space: pre-wrap;'>" + \
+            "\n".join(debug_info) + "</pre>"
+        html_content += '<p><a href="/">🏠 На главную</a></p>'
+
+        return html_content
+
+    except Exception as e:
+        return f"<h1>❌ Ошибка диагностики</h1><pre>{str(e)}</pre>"
+
+# Остальные маршруты...
+
 
 @app.route('/')
-def health():
-    try:
-        status = {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "services": {
-                "bot_service": bot_service is not None,
-                "bitrix_service": bitrix_chat_service is not None
-            }
-        }
-        if request.headers.get('User-Agent', '').startswith('Railway'):
-            return "OK", 200
-        return jsonify(status), 200
-    except Exception as e:
-        print(f"[ERROR] Health check error: {e}")
-        return "OK", 200
-
-@app.route('/home')
 def home():
     return """
     <h1>🤖 Консультант по индивидуальным стелькам ORTOS</h1>
@@ -101,197 +390,8 @@ def home():
     </div>
     """
 
-@app.route('/telegram/<token>', methods=['POST'])
-def telegram_webhook(token):
-    try:
-        if token != Config.TELEGRAM_TOKEN:
-            return jsonify({"error": "Invalid token"}), 403
-        if not bot_service:
-            return jsonify({"error": "Bot service not available"}), 503
-
-        data = request.json
-        message = data.get('message', {})
-        chat_id = message.get('chat', {}).get('id')
-        user_name = message.get('chat', {}).get('first_name', 'Unknown')
-        text = message.get('text', '')
-
-        if not text:
-            return jsonify({"status": "ok"})
-
-        print(f"[INFO] Telegram message from {user_name} (ID: {chat_id}): {text}")
-
-        ai_response = bot_service.process_question(text, user_id=str(chat_id))
-        log_message(user_name, chat_id, text, ai_response)
-
-        send_url = f"{Config.TELEGRAM_URL}/sendMessage"
-        requests.post(send_url, json={"chat_id": chat_id, "text": ai_response})
-
-        return jsonify({"status": "ok"})
-
-    except Exception as e:
-        print(f"[ERROR] telegram_webhook: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/bitrix/openlines_webhook', methods=['GET', 'POST'])
-def openlines_webhook():
-    try:
-        print("=" * 60)
-        print("[INFO] BITRIX24 OPENLINES WEBHOOK CALLED!")
-
-        if request.method == "GET":
-            code = request.args.get("code")
-            if code:
-                return redirect(f"/install?code={code}")
-            return "GET without code"
-
-        data = {}
-        if request.content_type == 'application/json':
-            data = request.json or {}
-        elif request.form:
-            data = request.form.to_dict()
-        else:
-            try:
-                raw_data = request.get_data(as_text=True)
-                if raw_data:
-                    data = json.loads(raw_data)
-            except:
-                pass
-
-        print(f"[INFO] Data: {data}")
-
-        event = data.get('event')
-        if event == 'ONIMBOTMESSAGEADD':
-            return handle_bitrix_message(data)
-        elif event == 'ONIMBOTWELCOMEMESSAGE':
-            return handle_welcome_message(data)
-        else:
-            print(f"[WARN] Unknown event: {event}")
-            print("[INFO] Full payload:", data)
-
-        return jsonify({"status": "ok"})
-
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] Bitrix webhook error: {e}")
-        print(f"[INFO] TRACEBACK: {traceback.format_exc()}")
-        return jsonify({"status": "error", "message": str(e)}), 200
-
-
-def handle_bitrix_message(data):
-    message = data.get('data[PARAMS][MESSAGE]', '') or data.get(
-        'data', {}).get('MESSAGE', '')
-    dialog_id = data.get('data[PARAMS][DIALOG_ID]', '') or data.get(
-        'data', {}).get('DIALOG_ID', '')
-    user_id = data.get('data[USER][ID]', '') or data.get(
-        'data', {}).get('USER_ID', '')
-
-    client_endpoint = data.get('auth[client_endpoint]', '')
-    application_token = data.get('auth[application_token]', '')
-
-    print(f"[INFO] Message: '{message}', Dialog: {dialog_id}, User: {user_id}")
-    if client_endpoint:
-        print(f"[INFO] Auth credentials found from webhook")
-
-    if not message or not dialog_id:
-        return jsonify({"status": "ignored"}), 200
-
-    if not bot_service:
-        return jsonify({"status": "error", "message": "Bot service not available"}), 200
-
-    chat_id = None
-    if dialog_id.startswith("chat"):
-        try:
-            chat_id = int(dialog_id.replace("chat", ""))
-        except ValueError:
-            print("[WARN] Could not extract chat_id from dialog_id")
-
-    message_lower = message.lower()
-    operator_keywords = ['оператор', 'человек', 'менеджер',
-                         'специалист', 'живой', 'человека', 'свяжите с оператором']
-
-    if any(keyword in message_lower for keyword in operator_keywords):
-        return transfer_to_operator(dialog_id, user_id, chat_id, client_endpoint, application_token)
-
-    try:
-        ai_response = bot_service.process_question(
-            message, user_id=str(user_id or dialog_id))
-        log_message(f"BitrixUser_{user_id}", dialog_id, message, ai_response)
-
-        if bitrix_chat_service:
-            bitrix_chat_service.send_message(
-                dialog_id, ai_response, client_endpoint, application_token)
-        else:
-            requests.post(
-                f"{Config.BITRIX_WEBHOOK_URL}/imbot.message.add",
-                json={
-                    "BOT_ID": Config.BITRIX_BOT_ID,
-                    "CLIENT_ID": Config.BITRIX_CLIENT_ID,
-                    "DIALOG_ID": dialog_id,
-                    "MESSAGE": ai_response
-                },
-                timeout=10
-            )
-
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        print(f"[ERROR] Bitrix AI processing error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 200
-
-
-def transfer_to_operator(dialog_id, user_id, chat_id, client_endpoint=None, application_token=None):
-    if not chat_id:
-        return jsonify({"status": "error", "message": "no_chat_id"}), 400
-
-    try:
-        if bitrix_chat_service:
-            bitrix_chat_service.transfer_to_operator(
-                dialog_id, client_endpoint, application_token)
-        else:
-            requests.post(
-                f"{Config.BITRIX_WEBHOOK_URL}/imbot.message.add",
-                json={
-                    "BOT_ID": Config.BITRIX_BOT_ID,
-                    "CLIENT_ID": Config.BITRIX_CLIENT_ID,
-                    "DIALOG_ID": dialog_id,
-                    "MESSAGE": "Соединяю с оператором..."
-                },
-                timeout=10
-            )
-        return jsonify({"status": "transferred"}), 200
-    except Exception as e:
-        print(f"[ERROR] Transfer error: {e}")
-        return jsonify({"status": "error"}), 200
-
-
-def handle_welcome_message(data):
-    dialog_id = data.get('data[PARAMS][DIALOG_ID]', '')
-    if not dialog_id:
-        return jsonify({"status": "ignored"}), 200
-
-    welcome_msg = "👋 Добро пожаловать! Я — AI-консультант ORTOS. Задавайте вопросы о стельках!"
-
-    try:
-        if bitrix_chat_service:
-            bitrix_chat_service.send_message(dialog_id, welcome_msg)
-        else:
-            requests.post(
-                f"{Config.BITRIX_WEBHOOK_URL}/imbot.message.add",
-                json={
-                    "BOT_ID": Config.BITRIX_BOT_ID,
-                    "CLIENT_ID": Config.BITRIX_CLIENT_ID,
-                    "DIALOG_ID": dialog_id,
-                    "MESSAGE": welcome_msg
-                },
-                timeout=10
-            )
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        print(f"[ERROR] Welcome message error: {e}")
-        return jsonify({"status": "error"}), 200
-
 
 if __name__ == '__main__':
-    init_services()
     port = int(os.environ.get('PORT', 5000))
-    print(f"[INFO] Starting server on port {port}...")
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    print(f"🌐 Starting server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=False)
