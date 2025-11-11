@@ -1,11 +1,19 @@
+# -*- coding: utf-8 -*-
 import re
 import os
+import sys
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from groq import Groq
 from models.product import Product
 from config import Config
 from services.feed_service import FeedService
+from services.embeddings_service import EmbeddingsService
 from services.cache_service import CacheService
 from services.context_service import ContextService
 from services.filter_service import FilterService
@@ -101,7 +109,8 @@ class BotService:
             return appointment_result
 
         # 8. Консультации (RAG)
-        result = self.consultation_service.get_consultation_response(question, self.client, self.data)
+        result = self.consultation_service.get_consultation_response(
+            question, self.client, self.data)
         self.cache_service.set(cache_key, result)
         return result
 
@@ -464,3 +473,111 @@ class BotService:
             return random.choice(responses)
 
         return None
+
+
+class EmbeddingsBotService:
+    def __init__(self):
+        self.embeddings_service = EmbeddingsService(
+            knowledge_base_path="d:\\ortos-bot\\data\\knowledge_base.json"
+        )
+        loaded = False
+        try:
+            loaded = self.embeddings_service.load_indices()
+        except Exception as e:
+            print(f"❌ Ошибка загрузки индексов: {e}")
+        if not loaded:
+            try:
+                self.embeddings_service.build_indices()
+                self.embeddings_service.save_indices()
+            except Exception as e:
+                print(f"❌ Ошибка создания индексов: {e}")
+        self.client = None
+        if Config.GROQ_API_KEY:
+            try:
+                self.client = Groq(api_key=Config.GROQ_API_KEY)
+            except Exception as e:
+                print(f"❌ Ошибка инициализации Groq: {e}")
+
+    def process_question(self, question: str, user_id: str = "telegram") -> str:
+        query = question.strip()
+        if not query:
+            return "Пожалуйста, напишите вопрос."
+        try:
+            results = self.embeddings_service.search(query, top_k=7)
+        except Exception as e:
+            print(f"❌ Ошибка поиска: {e}")
+            return "Произошла ошибка при поиске. Попробуйте позже."
+        if not results:
+            return "Информация не найдена. Уточните вопрос."
+        answer = self._generate_answer(query, results)
+        summary = self._format_results(results)
+        parts = [p for p in [answer, summary] if p]
+        if not parts:
+            return "Информация обработана, но ответ не сформирован."
+        return "\n\n".join(parts)
+
+    def _generate_answer(self, question: str, results: List[Tuple[Dict[str, Any], float]]) -> str:
+        if not self.client or not results:
+            return ""
+        context_parts = []
+        for doc, score in results[:5]:
+            if doc['type'] == 'section':
+                context_parts.append(f"[РАЗДЕЛ: {doc['title']}]\n{doc['text']}")
+            else:
+                full_info = doc.get('full_text', doc.get('address', ''))
+                context_parts.append(
+                    f"[САЛОН: {doc.get('city', 'Неизвестно')}]\n{full_info}"
+                )
+        context = "\n\n".join(context_parts)
+        system_prompt = """Ты — профессиональный консультант ORTOS (Беларусь). Отвечай ТОЛЬКО по контексту.
+        - 2–3 предложения
+        - Уверенно: "подходят", "помогают", "снимают"
+        - 1 факт + 1 польза
+        - Без повторения вопроса
+
+        ## ПРИМЕР
+        Вопрос: Подойдут ли при шпоре?
+        Ответ: Да, стельки подходят при пяточной шпоре. Они амортизируют ударную нагрузку. Это снижает боль при ходьбе.
+
+        ## КРИТИЧЕСКИ ВАЖНО
+        - ОТВЕЧАЙ ТОЛЬКО НА ВОПРОС. Ничего лишнего.
+        - Говори уверенно: "подходят", "помогают", "снимают" — БЕЗ "могут", "возможно", "привести к"
+        - НЕ используй: "мы", "наши", "ORTOS делает", "рекомендуем"
+        - НЕ выдумывай:
+        • НЕТ онлайн-календаря, личного кабинета
+        • Стельки: ТОЛЬКО самовывоз (Гикало, 1), НЕТ возврата, НЕТ гарантии
+        • Консультации: ТОЛЬКО Минск (Гикало, 1) + выездные (по ссылке)
+        • Салоны в городах: ТОЛЬКО продажа товаров (НЕ консультации)
+        • Процедура: запись → консультация → 20 дней → самовывоз
+                Остальное — ТОЛЬКО из контекста."""
+        user_message = f"""Вопрос: {question}
+
+База знаний:
+{context}
+
+Дай точный краткий ответ БЕЗ повторения вопроса. Максимум 2-3 предложения."""
+        try:
+            response = self.client.chat.completions.create(
+                model=Config.CONSULT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=400,
+                temperature=0.0
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"❌ Ошибка Groq: {e}")
+            return ""
+
+    def _format_results(self, results: List[Tuple[Dict[str, Any], float]]) -> str:
+        if not results:
+            return ""
+        lines = ["🔎 Источники поиска:"]
+        for doc, score in results[:3]:
+            if doc['type'] == 'section':
+                lines.append(f"• {doc['title']} (score {score:.2f})")
+            else:
+                lines.append(f"• {doc['city']} — {doc['address']} (score {score:.2f})")
+        return "\n".join(lines)

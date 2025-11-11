@@ -1,4 +1,11 @@
+# -*- coding: utf-8 -*-
+import sys
 from typing import List
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from models.product import Product
 from config import Config
 
@@ -63,6 +70,12 @@ class PromptService:
     • Сайт: ortos.by
     • Выездные консультации по регионам
 
+    ВАЖНО: 
+    - Отвечай ТОЛЬКО на русском языке
+    - Различай постоянные салоны и выездные консультации:
+      * Постоянные салоны работают каждый день по указанному адресу
+      * Выездные консультации - это временные визиты в города
+    
     Упоминай адрес только когда спрашивают про запись или консультацию!"""
 
         prompt = f"""ВОПРОС КЛИЕНТА: {question}

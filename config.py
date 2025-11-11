@@ -1,15 +1,27 @@
+# -*- coding: utf-8 -*-
 import os
+import sys
+from dotenv import load_dotenv
 
-# Сначала определяем BASE_DIR
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
+# Определяем путь к .env рядом с config.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+# Загружаем переменные
+if os.path.exists(ENV_PATH):
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
+    print(f"[OK] .env loaded: {ENV_PATH}")
+else:
+    print(f"[WARN] .env not found at {ENV_PATH}")
 
 
 class Config:
-    # API Keys из переменных окружения
-    GROQ_API_KEY = os.environ.get(
-        'GROQ_API_KEY', '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')
-    TELEGRAM_TOKEN = os.environ.get(
-        'TELEGRAM_TOKEN', '6262949628:AAGgC03y9GQJxiI6RWUdlDbR_2HRurhi1qo')
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
     TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
     # Google Sheets - используем переменные окружения для Railway
@@ -17,10 +29,9 @@ class Config:
     GOOGLE_SHEET_NAME = "ORTOS Appointments"
 
     # Битрикс24
-    BITRIX_WEBHOOK_URL = os.environ.get(
-        'BITRIX_WEBHOOK_URL', 'https://b24-sdgm61.bitrix24.by/rest/1/bunyxx3f21uixoou/')
-    BITRIX_BOT_NAME = os.environ.get('BITRIX_BOT_NAME', 'ORTOS Consultant')
-    BITRIX_BOT_CODE = os.environ.get('BITRIX_BOT_CODE', 'ortos_consultant')
+    BITRIX_WEBHOOK_URL = os.environ.get('BITRIX_WEBHOOK_URL')
+    BITRIX_BOT_NAME = os.environ.get('BITRIX_BOT_NAME')
+    BITRIX_BOT_CODE = os.environ.get('BITRIX_BOT_CODE')
 
     # Настройки
     CACHE_TIMEOUT = 300
@@ -32,8 +43,9 @@ class Config:
 
     # Модели Groq
     SEARCH_MODEL = "llama-3.1-8b-instant"
-    CONSULT_MODEL = "llama-3.3-70b-versatile"
+    CONSULT_MODEL = "llama-3.1-8b-instant"
 
+    # llama-3.3-70b-versatile
     # Салоны
     SALONS = {
         'гикало': 'gikalo.xml',

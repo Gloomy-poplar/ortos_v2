@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
 import os
 import re
+import sys
 from typing import Optional, Dict, Any
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from config import Config
 
 
@@ -27,7 +34,8 @@ class ConsultationService:
             # Приоритет — данные, переданные из BotService (RAG loader)
             stelki_text = ""
             if data and isinstance(data, dict):
-                stelki_text = data.get('stelki') or data.get('stelki.txt') or ""
+                stelki_text = data.get(
+                    'stelki') or data.get('stelki.txt') or ""
 
             if not stelki_text:
                 stelki_text = self._load_stelki_text()
@@ -43,7 +51,8 @@ class ConsultationService:
                         question, stelki_text)
 
                     response = groq_client.chat.completions.create(
-                        model=prompt_service.get_model_for_task("consultation"),
+                        model=prompt_service.get_model_for_task(
+                            "consultation"),
                         messages=[
                             {"role": "system", "content": system_role},
                             {"role": "user", "content": prompt}
@@ -53,7 +62,8 @@ class ConsultationService:
                     )
 
                     # Возвращаем ответ модели при наличии
-                    model_ans = getattr(response.choices[0].message, 'content', None) if response else None
+                    model_ans = getattr(
+                        response.choices[0].message, 'content', None) if response else None
                     if model_ans:
                         return model_ans
                     # Если модель вернула пусто — падаем к локальному ранжированию
@@ -87,7 +97,8 @@ class ConsultationService:
                 return "База знаний о стельках временно недоступна. Попробуйте позже."
 
             # Разбиваем на абзацы — чаще всего в базе есть разделы, разделённые пустой строкой
-            paragraphs = [p.strip() for p in re.split(r"\n\s*\n", stelki_text) if p.strip()]
+            paragraphs = [p.strip() for p in re.split(
+                r"\n\s*\n", stelki_text) if p.strip()]
             if not paragraphs:
                 # Как fallback — возвращаем первые 1000 символов
                 return stelki_text[:2000]
@@ -115,9 +126,7 @@ class ConsultationService:
 
         except Exception as e:
             print(f"❌ Ошибка локального поиска по базе стелек: {e}")
-            return "Извините, произошла ошибка при поиске в локальной базе." 
-
-    
+            return "Извините, произошла ошибка при поиске в локальной базе."
 
     # Закомментированный метод для общих вопросов
     # def _get_general_answer(self, question: str, groq_client) -> str:

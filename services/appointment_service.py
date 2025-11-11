@@ -1,6 +1,13 @@
+# -*- coding: utf-8 -*-
 import re
+import sys
 from datetime import datetime
 from typing import List, Dict, Optional
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from services.google_sheets_service import GoogleSheetsService
 
 

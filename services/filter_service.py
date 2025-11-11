@@ -1,6 +1,14 @@
+# -*- coding: utf-8 -*-
 import re
+import sys
 from typing import List, Optional
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from models.product import Product
+
 
 class FilterService:
     def __init__(self):
@@ -32,25 +40,25 @@ class FilterService:
             'navimeso': ['navimeso', 'навимесо'],
             'optio': ['optio', 'оптио']
         }
-    
+
     def filter_products(self, question: str, products: List[Product]) -> List[Product]:
         """Основной метод фильтрации товаров"""
         print(f"🔍 Фильтрация товаров по запросу: '{question}'")
-        
+
         question_lower = question.lower()
         filtered = []
-        
+
         # Извлекаем критерии фильтрации
         target_size = self._extract_size(question)
         target_brands = self._extract_brands(question_lower)
-        
+
         for product in products:
             if self._matches_criteria(product, question_lower, target_size, target_brands):
                 filtered.append(product)
-        
+
         print(f"✅ После фильтрации: {len(filtered)} товаров")
         return filtered
-    
+
     def _extract_size(self, question: str) -> Optional[str]:
         """Извлекает размер из вопроса"""
         size_match = re.search(r'\b(\d{2})\b', question)
@@ -59,29 +67,29 @@ class FilterService:
             print(f"🎯 Ищем размер: {size}")
             return size
         return None
-    
+
     def _extract_brands(self, question_lower: str) -> List[str]:
         """Извлекает бренды из вопроса с улучшенным сопоставлением"""
         brands = []
-        
+
         for brand, keywords in self.brand_keywords.items():
             for keyword in keywords:
                 if keyword in question_lower:
                     brands.append(brand)
                     print(f"🎯 Найден бренд: {brand} (по ключу: '{keyword}')")
                     break  # Не проверяем остальные варианты для этого бренда
-        
+
         print(f"📋 Извлеченные бренды: {brands}")
         return brands
-    
-    def _matches_criteria(self, product: Product, question: str, 
-                         target_size: Optional[str], target_brands: List[str]) -> bool:
+
+    def _matches_criteria(self, product: Product, question: str,
+                          target_size: Optional[str], target_brands: List[str]) -> bool:
         """Проверяет соответствие товара критериям"""
-        
+
         # Проверяем размер (если указан в запросе)
         if target_size and not product.has_size(target_size):
             return False
-        
+
         # Проверяем бренд (если указан в запросе) - СТРОГАЯ ПРОВЕРКА
         if target_brands:
             product_brand_match = False
@@ -91,15 +99,15 @@ class FilterService:
                     break
             if not product_brand_match:
                 return False
-        
+
         # Проверяем тип товара
         if 'стельк' in question and not product.is_insoles():
             return False
         elif 'обув' in question and not product.is_footwear():
             return False
-        
+
         return True
-    
+
     def filter_by_category(self, products: List[Product], category: str) -> List[Product]:
         """Фильтрация по категории"""
         if category == 'footwear':

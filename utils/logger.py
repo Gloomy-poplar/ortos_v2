@@ -1,7 +1,14 @@
+# -*- coding: utf-8 -*-
 import os
+import sys
 import requests
 from datetime import datetime, timedelta
 from config import Config
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 
 def log_message(user_name: str, user_id: str, message: str, response: str) -> None:
     """Логирование сообщений"""
@@ -41,6 +48,7 @@ def log_message(user_name: str, user_id: str, message: str, response: str) -> No
 
     except Exception as e:
         print(f"❌ Критическая ошибка логирования: {e}")
+
 
 def send_telegram_message(chat_id: str, text: str) -> bool:
     """Отправка сообщения в Telegram"""

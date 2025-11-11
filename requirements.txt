@@ -8,3 +8,10 @@ lxml==4.9.3
 redis==5.0.1
 schedule==1.2.0
 urllib3<2.0
+
+# Embeddings и поиск
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.0
+numpy>=1.21.0
+scikit-learn>=1.0.0
+rank-bm25>=0.2.0

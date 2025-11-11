@@ -1,8 +1,15 @@
+# -*- coding: utf-8 -*-
 import gspread
 import re
+import sys
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from config import Config
 
 

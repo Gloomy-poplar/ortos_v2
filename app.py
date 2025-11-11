@@ -1,14 +1,21 @@
+# -*- coding: utf-8 -*-
 import subprocess
 import os
+import sys
 import requests
 from flask import Flask, request, jsonify, redirect
 import json
 from typing import Dict
+from datetime import datetime
+
+# Устанавливаем правильное кодирование для консоли Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from config import Config
-from services.bot_service import BotService
+from services.bot_service import BotService, EmbeddingsBotService
 from utils.logger import log_message
 from services.bitrix_chat_service import BitrixChatService
-from datetime import datetime
 
 print("🚀 Starting ORTOS Bot Application...")
 print(f"📊 Config loaded: TELEGRAM_TOKEN = {bool(Config.TELEGRAM_TOKEN)}")
@@ -16,6 +23,7 @@ print(f"📊 Config loaded: GROQ_API_KEY = {bool(Config.GROQ_API_KEY)}")
 
 app = Flask(__name__)
 bot_service = BotService()
+embeddings_bot_service = EmbeddingsBotService()
 bitrix_chat_service = BitrixChatService()
 
 # Webhook для Telegram
@@ -36,7 +44,7 @@ def telegram_webhook(token):
         print(f"👤 {user_name} ({chat_id}): {text}")
 
         if text:
-            ai_response = bot_service.process_question(
+            ai_response = embeddings_bot_service.process_question(
                 text, user_id=str(chat_id))
             log_message(user_name, chat_id, text, ai_response)
 
