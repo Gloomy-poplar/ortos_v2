@@ -32,7 +32,7 @@ class EmbeddingsService:
 
     def __init__(
         self,
-        model_name: str = "intfloat/multilingual-e5-base",
+        model_name: str = "intfloat/multilingual-e5-small",
         knowledge_base_path: str = os.path.join(os.path.dirname(
             __file__), "..", "data", "knowledge_base.json"),
         cache_dir: Optional[str] = None,

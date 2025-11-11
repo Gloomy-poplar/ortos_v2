@@ -10,14 +10,14 @@ import json
 from typing import Dict, Optional
 from datetime import datetime
 import os
+import threading
+import time
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Устанавливаем правильное кодирование для консоли Windows
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
-
 
 print("🚀 Starting ORTOS Bot Application...")
 print(f"📊 Config loaded: TELEGRAM_TOKEN = {bool(Config.TELEGRAM_TOKEN)}")
@@ -28,6 +28,9 @@ bot_service = BotService()
 embeddings_bot_service: Optional[EmbeddingsBotService] = None
 bitrix_chat_service = BitrixChatService()
 
+_init_lock = threading.Lock()
+_init_started = False
+
 def get_embeddings_bot_service() -> EmbeddingsBotService:
     global embeddings_bot_service
     if embeddings_bot_service is None:
@@ -35,11 +38,24 @@ def get_embeddings_bot_service() -> EmbeddingsBotService:
         embeddings_bot_service = EmbeddingsBotService()
     return embeddings_bot_service
 
-# Стартуем инициализацию embeddings при запуске
-get_embeddings_bot_service()
-
-# Webhook для Telegram
-
+def start_background_initialization():
+    """Запускает инициализацию в фоновом потоке"""
+    global _init_started
+    with _init_lock:
+        if _init_started:
+            return
+        _init_started = True
+    
+    def init_thread():
+        try:
+            print("⏳ Фоновая инициализация EmbeddingsBotService начата...")
+            get_embeddings_bot_service()
+            print("✅ Фоновая инициализация завершена")
+        except Exception as e:
+            print(f"❌ Ошибка фоновой инициализации: {e}")
+    
+    thread = threading.Thread(target=init_thread, daemon=True)
+    thread.start()
 
 @app.route('/telegram/<token>', methods=['POST'])
 def telegram_webhook(token):
@@ -73,7 +89,6 @@ def telegram_webhook(token):
     except Exception as e:
         print(f"❌ Ошибка webhook: {e}")
         return jsonify({"error": str(e)}), 500
-
 # Bitrix24 Open Lines Webhook
 
 
