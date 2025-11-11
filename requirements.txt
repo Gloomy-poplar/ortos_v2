@@ -6,6 +6,7 @@ google-auth==2.23.0
 redis==5.0.1
 schedule==1.2.0
 urllib3<2.0
+python-dotenv==1.0.1
 
 # === CPU-ONLY ML (главное!) ===
 --extra-index-url https://download.pytorch.org/whl/cpu
