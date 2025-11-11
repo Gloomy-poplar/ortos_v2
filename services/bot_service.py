@@ -40,25 +40,6 @@ class BotService:
         # Загружаем данные из файлов (для RAG)
         self.data = self._load_data()
 
-    def _load_data(self) -> Dict[str, str]:
-        """Загружаем содержимое файлов из папки data/"""
-        data_dir = os.path.join(os.path.dirname(__file__), '../data')
-        data: Dict[str, str] = {}
-        categories = ['stelki', 'scanning', 'contacts', 'delivery']
-        for category in categories:
-            file_path = os.path.join(data_dir, f'{category}.txt')
-            if os.path.exists(file_path):
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data[category] = f.read()
-                    print(f"📂 Загружен файл: {file_path}")
-                except Exception as e:
-                    print(f"⚠️ Ошибка чтения файла {file_path}: {e}")
-                    data[category] = ""
-            else:
-                print(f"⚠️ Файл не найден: {file_path}")
-                data[category] = ""
-        return data
 
     def process_question(self, question: str, user_id: str = "default") -> str:
         """Основной метод обработки вопроса"""
