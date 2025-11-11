@@ -1,0 +1,13 @@
+[phases.setup]
+nixpkgsArchive = "8d7b3c2f1e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b"
+
+[phases.build]
+cmds = [
+  "apt-get update && apt-get install -y --no-install-recommends gcc libgomp1",
+  "pip install --no-cache-dir -r requirements.txt",
+  "apt-get autoremove -y && apt-get clean",
+  "rm -rf /var/lib/apt/lists/* /tmp/* /root/.cache/pip"
+]
+
+[start]
+cmd = "python app.py"

@@ -1,21 +1,23 @@
-# -*- coding: utf-8 -*-
+from services.bitrix_chat_service import BitrixChatService
+from utils.logger import log_message
+from services.bot_service import BotService, EmbeddingsBotService
+from config import Config
 import subprocess
-import os
 import sys
 import requests
 from flask import Flask, request, jsonify, redirect
 import json
 from typing import Dict
 from datetime import datetime
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Устанавливаем правильное кодирование для консоли Windows
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-from config import Config
-from services.bot_service import BotService, EmbeddingsBotService
-from utils.logger import log_message
-from services.bitrix_chat_service import BitrixChatService
 
 print("🚀 Starting ORTOS Bot Application...")
 print(f"📊 Config loaded: TELEGRAM_TOKEN = {bool(Config.TELEGRAM_TOKEN)}")

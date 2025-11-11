@@ -7,12 +7,10 @@ redis==5.0.1
 schedule==1.2.0
 urllib3<2.0
 
-# Embeddings и поиск
-sentence-transformers>=2.2.0
-faiss-cpu>=1.7.0
-numpy>=1.21.0
-scikit-learn>=1.0.0
-rank-bm25>=0.2.0
-
-# В requirements.txt добавь:
-torch>=2.0.0,<2.5.0 --index-url https://download.pytorch.org/whl/cpu
+# === CPU-ONLY ML (главное!) ===
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.0+cpu
+sentence-transformers==3.1.1
+faiss-cpu==1.8.0
+numpy==1.26.4
+rank-bm25==0.2.2
