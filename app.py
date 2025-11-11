@@ -7,7 +7,7 @@ import sys
 import requests
 from flask import Flask, request, jsonify, redirect
 import json
-from typing import Dict
+from typing import Dict, Optional
 from datetime import datetime
 import os
 
@@ -25,8 +25,14 @@ print(f"📊 Config loaded: GROQ_API_KEY = {bool(Config.GROQ_API_KEY)}")
 
 app = Flask(__name__)
 bot_service = BotService()
-embeddings_bot_service = EmbeddingsBotService()
+embeddings_bot_service: Optional[EmbeddingsBotService] = None
 bitrix_chat_service = BitrixChatService()
+
+def get_embeddings_bot_service() -> EmbeddingsBotService:
+    global embeddings_bot_service
+    if embeddings_bot_service is None:
+        embeddings_bot_service = EmbeddingsBotService()
+    return embeddings_bot_service
 
 # Webhook для Telegram
 
@@ -46,7 +52,8 @@ def telegram_webhook(token):
         print(f"👤 {user_name} ({chat_id}): {text}")
 
         if text:
-            ai_response = embeddings_bot_service.process_question(
+            service = get_embeddings_bot_service()
+            ai_response = service.process_question(
                 text, user_id=str(chat_id))
             log_message(user_name, chat_id, text, ai_response)
 

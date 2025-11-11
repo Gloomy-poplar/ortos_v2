@@ -2,6 +2,7 @@
 import re
 import os
 import sys
+import threading
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 
@@ -457,26 +458,45 @@ class BotService:
 
 class EmbeddingsBotService:
     def __init__(self):
-        self.embeddings_service = EmbeddingsService()
-        loaded = False
-        try:
-            loaded = self.embeddings_service.load_indices()
-        except Exception as e:
-            print(f"❌ Ошибка загрузки индексов: {e}")
-        if not loaded:
-            try:
-                self.embeddings_service.build_indices()
-                self.embeddings_service.save_indices()
-            except Exception as e:
-                print(f"❌ Ошибка создания индексов: {e}")
+        self._init_lock = threading.Lock()
+        self.embeddings_service: Optional[EmbeddingsService] = None
         self.client = None
-        if Config.GROQ_API_KEY:
+
+    def _ensure_initialized(self):
+        if self.embeddings_service is not None:
+            return
+        with self._init_lock:
+            if self.embeddings_service is not None:
+                return
             try:
-                self.client = Groq(api_key=Config.GROQ_API_KEY)
+                service = EmbeddingsService()
             except Exception as e:
-                print(f"❌ Ошибка инициализации Groq: {e}")
+                print(f"❌ Ошибка инициализации EmbeddingsService: {e}")
+                return
+            loaded = False
+            try:
+                loaded = service.load_indices()
+            except Exception as e:
+                print(f"❌ Ошибка загрузки индексов: {e}")
+            if not loaded:
+                try:
+                    service.build_indices()
+                    service.save_indices()
+                except Exception as e:
+                    print(f"❌ Ошибка создания индексов: {e}")
+            client = None
+            if Config.GROQ_API_KEY:
+                try:
+                    client = Groq(api_key=Config.GROQ_API_KEY)
+                except Exception as e:
+                    print(f"❌ Ошибка инициализации Groq: {e}")
+            self.embeddings_service = service
+            self.client = client
 
     def process_question(self, question: str, user_id: str = "telegram") -> str:
+        self._ensure_initialized()
+        if not self.embeddings_service:
+            return "Сервис поиска временно недоступен."
         query = question.strip()
         if not query:
             return "Пожалуйста, напишите вопрос."
