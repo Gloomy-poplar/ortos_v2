@@ -462,6 +462,7 @@ class EmbeddingsBotService:
         self._initializing = False
         self.embeddings_service: Optional[EmbeddingsService] = None
         self.client: Optional[Groq] = None
+        self._ensure_initialized()
 
     def _initialize_embeddings(self):
         print("⚙️ Инициализация EmbeddingsBotService...")

@@ -35,6 +35,9 @@ def get_embeddings_bot_service() -> EmbeddingsBotService:
         embeddings_bot_service = EmbeddingsBotService()
     return embeddings_bot_service
 
+# Стартуем инициализацию embeddings при запуске
+get_embeddings_bot_service()
+
 # Webhook для Telegram
 
 
