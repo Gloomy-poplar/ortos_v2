@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import time
 import numpy as np
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
@@ -43,9 +44,11 @@ class EmbeddingsService:
         self.knowledge_base_path = knowledge_base_path
 
         print(f"📥 Загружаем модель: {model_name}...")
+        model_start = time.perf_counter()
         self.model = SentenceTransformer(model_name, device="cpu")
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
-        print(f"✅ Модель загружена. Размер вектора: {self.embedding_dim}")
+        model_elapsed = time.perf_counter() - model_start
+        print(f"✅ Модель загружена за {model_elapsed:.2f}s. Размер вектора: {self.embedding_dim}")
 
         self.locations = []
         self.sections = []
@@ -87,14 +90,17 @@ class EmbeddingsService:
             raise FileNotFoundError(
                 f"Knowledge base не найдена: {self.knowledge_base_path}")
 
+        load_start = time.perf_counter()
         with open(self.knowledge_base_path, 'r', encoding='utf-8') as f:
             kb = json.load(f)
+        load_elapsed = time.perf_counter() - load_start
 
         self.locations = kb.get('locations', [])
         print(f"📍 Загружено адресов: {len(self.locations)}")
 
         self.sections = kb.get('sections', {})
         print(f"📚 Загружено секций: {len(self.sections)}")
+        print(f"🧾 Загрузка базы знаний заняла {load_elapsed:.2f}s")
 
         self.all_documents = []
 
@@ -133,11 +139,12 @@ class EmbeddingsService:
     def _build_indices(self) -> None:
         """Создает индексы"""
         print(f"\n🔨 Создаем индексы...")
+        build_start = time.perf_counter()
 
         texts = [doc['text'] for doc in self.all_documents]
 
-        # Semantic index
         print("  📊 Создаем semantic индекс...")
+        semantic_start = time.perf_counter()
         embeddings = self.model.encode(
             texts,
             convert_to_tensor=False,
@@ -149,14 +156,19 @@ class EmbeddingsService:
 
         self.semantic_index = faiss.IndexFlatIP(self.embedding_dim)
         self.semantic_index.add(embeddings)
-        print(f"  ✅ Semantic индекс: {self.semantic_index.ntotal} векторов")
+        semantic_elapsed = time.perf_counter() - semantic_start
+        print(f"  ✅ Semantic индекс: {self.semantic_index.ntotal} векторов за {semantic_elapsed:.2f}s")
 
-        # BM25 index
         if BM25Okapi:
             print("  🔤 Создаем BM25 индекс...")
+            bm25_start = time.perf_counter()
             tokenized_texts = [text.lower().split() for text in texts]
             self.bm25_index = BM25Okapi(tokenized_texts)
-            print(f"  ✅ BM25 индекс создан")
+            bm25_elapsed = time.perf_counter() - bm25_start
+            print(f"  ✅ BM25 индекс создан за {bm25_elapsed:.2f}s")
+
+        total_elapsed = time.perf_counter() - build_start
+        print(f"⏱️ Построение индексов завершено за {total_elapsed:.2f}s")
 
     def _get_category_boost(self, query: str, doc_key: str) -> float:
         """Вычисляет boost для категории на основе ключевых слов в вопросе"""
@@ -282,9 +294,19 @@ class EmbeddingsService:
             return False
 
         try:
+            load_start = time.perf_counter()
             self.semantic_index = faiss.read_index(semantic_path)
+            metadata = {}
+            try:
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+            except Exception as meta_error:
+                print(f"⚠️ Не удалось прочитать метаданные: {meta_error}")
+            load_elapsed = time.perf_counter() - load_start
             print(
-                f"✅ Semantic индекс загружен: {self.semantic_index.ntotal} векторов")
+                f"✅ Semantic индекс загружен: {self.semantic_index.ntotal} векторов за {load_elapsed:.2f}s")
+            if metadata:
+                print(f"ℹ️ Метаданные индекса: model={metadata.get('model_name')}, dim={metadata.get('embedding_dim')}, docs={metadata.get('total_documents')}")
             return True
         except Exception as e:
             print(f"❌ Ошибка загрузки индексов: {e}")

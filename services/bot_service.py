@@ -2,6 +2,7 @@
 import re
 import os
 import sys
+import time
 import threading
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
@@ -466,6 +467,7 @@ class EmbeddingsBotService:
 
     def _initialize_embeddings(self):
         print("⚙️ Инициализация EmbeddingsBotService...")
+        init_start = time.perf_counter()
         service = None
         client = None
         try:
@@ -473,16 +475,20 @@ class EmbeddingsBotService:
             print("✅ EmbeddingsService создан")
             loaded = False
             try:
+                load_flag_start = time.perf_counter()
                 loaded = service.load_indices()
-                print(f"📦 Индексы загружены: {loaded}")
+                load_flag_elapsed = time.perf_counter() - load_flag_start
+                print(f"📦 Попытка загрузки индексов завершена за {load_flag_elapsed:.2f}s: {loaded}")
             except Exception as e:
                 print(f"❌ Ошибка загрузки индексов: {e}")
             if not loaded:
                 try:
                     print("🔨 Строим индексы...")
+                    build_cycle_start = time.perf_counter()
                     service.build_indices()
                     service.save_indices()
-                    print("✅ Индексы созданы и сохранены")
+                    build_cycle_elapsed = time.perf_counter() - build_cycle_start
+                    print(f"✅ Индексы созданы и сохранены за {build_cycle_elapsed:.2f}s")
                 except Exception as e:
                     print(f"❌ Ошибка создания индексов: {e}")
             if Config.GROQ_API_KEY:
@@ -494,6 +500,7 @@ class EmbeddingsBotService:
         except Exception as e:
             print(f"❌ Ошибка инициализации EmbeddingsService: {e}")
         finally:
+            elapsed = time.perf_counter() - init_start
             with self._init_lock:
                 if service and not self.embeddings_service:
                     self.embeddings_service = service
@@ -501,7 +508,7 @@ class EmbeddingsBotService:
                 if client:
                     self.client = client
                 self._initializing = False
-                print("⚙️ Инициализация EmbeddingsBotService завершена")
+                print(f"⚙️ Инициализация EmbeddingsBotService завершена за {elapsed:.2f}s")
 
     def _ensure_initialized(self) -> bool:
         if self.embeddings_service is not None:
