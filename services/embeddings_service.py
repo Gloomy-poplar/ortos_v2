@@ -152,12 +152,13 @@ class EmbeddingsService:
             batch_size=32,
         )
         embeddings = np.array(embeddings, dtype=np.float32)
+        print(f"  📐 Embeddings shape: {embeddings.shape}")
         faiss.normalize_L2(embeddings)
 
         self.semantic_index = faiss.IndexFlatIP(self.embedding_dim)
         self.semantic_index.add(embeddings)
         semantic_elapsed = time.perf_counter() - semantic_start
-        print(f"  ✅ Semantic индекс: {self.semantic_index.ntotal} векторов за {semantic_elapsed:.2f}s")
+        print(f"  ✅ Semantic индекс: {self.semantic_index.ntotal} векторов за {semantic_elapsed:.2f}s, dim={self.embedding_dim}")
 
         if BM25Okapi:
             print("  🔤 Создаем BM25 индекс...")
@@ -165,7 +166,7 @@ class EmbeddingsService:
             tokenized_texts = [text.lower().split() for text in texts]
             self.bm25_index = BM25Okapi(tokenized_texts)
             bm25_elapsed = time.perf_counter() - bm25_start
-            print(f"  ✅ BM25 индекс создан за {bm25_elapsed:.2f}s")
+            print(f"  ✅ BM25 индекс создан за {bm25_elapsed:.2f}s, документов={len(tokenized_texts)}")
 
         total_elapsed = time.perf_counter() - build_start
         print(f"⏱️ Построение индексов завершено за {total_elapsed:.2f}s")
@@ -196,6 +197,7 @@ class EmbeddingsService:
         if not query or not query.strip():
             return []
 
+        print(f"🔎 Запрос поиска: '{query.strip()}', top_k={top_k}, min_score={min_score}")
         results = {}
 
         # ===== SEMANTIC SEARCH =====
@@ -232,11 +234,13 @@ class EmbeddingsService:
                             results[doc_id] = score * 0.3
 
         # ===== ПЕРЕРАНЖИРОВАНИЕ ПО КАТЕГОРИЯМ =====
-        for doc_id, score in results.items():
+        for doc_id, score in list(results.items()):
             doc = next(
                 (d for d in self.all_documents if d['id'] == doc_id), None)
             if doc and doc['type'] == 'section':
                 category_boost = self._get_category_boost(query, doc['key'])
+                if category_boost != 1.0:
+                    print(f"  🎯 Boost категории для {doc['title']} ({doc['key']}): x{category_boost:.2f}")
                 results[doc_id] = score * category_boost
 
         # ===== СОРТИРОВКА И ФИЛЬТРАЦИЯ =====
@@ -257,6 +261,17 @@ class EmbeddingsService:
                 continue
 
             output.append((doc, score))
+
+        if output:
+            top_score = output[0][1]
+            print(f"📈 Итог поиска: {len(output)} документов, top_score={top_score:.4f}")
+            for doc, score in output:
+                if doc['type'] == 'section':
+                    print(f"  • Раздел: {doc['title']} | score={score:.4f} | key={doc.get('key')}")
+                else:
+                    print(f"  • Салон: {doc['city']} | score={score:.4f} | адрес={doc['address']}")
+        else:
+            print("📉 Итог поиска: результатов нет")
 
         return output
 

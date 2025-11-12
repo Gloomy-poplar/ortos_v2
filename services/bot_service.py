@@ -473,12 +473,17 @@ class EmbeddingsBotService:
         try:
             service = EmbeddingsService()
             print("✅ EmbeddingsService создан")
+            stats = service.get_stats()
+            print(f"📊 Embeddings scope: docs={stats['total_documents']}, sections={stats['total_sections']}, locations={stats['total_locations']}, dim={stats['embedding_dim']}")
             loaded = False
             try:
                 load_flag_start = time.perf_counter()
                 loaded = service.load_indices()
                 load_flag_elapsed = time.perf_counter() - load_flag_start
                 print(f"📦 Попытка загрузки индексов завершена за {load_flag_elapsed:.2f}s: {loaded}")
+                if loaded:
+                    stats_after_load = service.get_stats()
+                    print(f"📦 Загруженные индексы: docs={stats_after_load['total_documents']}, semantic={stats_after_load['has_semantic_index']}, bm25={stats_after_load['has_bm25_index']}")
             except Exception as e:
                 print(f"❌ Ошибка загрузки индексов: {e}")
             if not loaded:
@@ -486,6 +491,8 @@ class EmbeddingsBotService:
                     print("🔨 Строим индексы...")
                     build_cycle_start = time.perf_counter()
                     service.build_indices()
+                    stats_after_build = service.get_stats()
+                    print(f"🆕 Построенные индексы: docs={stats_after_build['total_documents']}, semantic={stats_after_build['has_semantic_index']}, bm25={stats_after_build['has_bm25_index']}")
                     service.save_indices()
                     build_cycle_elapsed = time.perf_counter() - build_cycle_start
                     print(f"✅ Индексы созданы и сохранены за {build_cycle_elapsed:.2f}s")
@@ -536,13 +543,25 @@ class EmbeddingsBotService:
         try:
             results = self.embeddings_service.search(query, top_k=7)
             print(f"🔍 Найдено результатов: {len(results)}")
+            if results:
+                for doc, score in results:
+                    if doc['type'] == 'section':
+                        print(f"    ➤ Раздел: {doc['title']} | score={score:.4f} | key={doc.get('key')}")
+                    else:
+                        print(f"    ➤ Салон: {doc['city']} | score={score:.4f} | адрес={doc['address']}")
         except Exception as e:
             print(f"❌ Ошибка поиска: {e}")
             return "Произошла ошибка при поиске. Попробуйте позже."
         if not results:
+            print("⚠️ Поиск не вернул результатов")
             return "Информация не найдена. Уточните вопрос."
         answer = self._generate_answer(query, results)
+        if answer:
+            answer_preview = answer if len(answer) <= 400 else answer[:400] + "..."
+            print(f"🗣️ Ответ AI: {answer_preview}")
         summary = self._format_results(results)
+        if summary:
+            print(f"📚 Источники ответа:\n{summary}")
         parts = [p for p in [answer, summary] if p]
         if not parts:
             print("⚠️ Ответ не сформирован")
@@ -565,6 +584,7 @@ class EmbeddingsBotService:
                     f"[САЛОН: {doc.get('city', 'Неизвестно')}]\n{full_info}"
                 )
         context = "\n\n".join(context_parts)
+        print(f"🧠 Контекст для ответа: {len(context_parts)} документов")
         system_prompt = """Ты — профессиональный консультант ORTOS (Беларусь). Отвечай ТОЛЬКО по контексту.
         - 2–3 предложения
         - Уверенно: "подходят", "помогают", "снимают"
@@ -611,7 +631,7 @@ class EmbeddingsBotService:
         if not results:
             return ""
         lines = ["🔎 Источники поиска:"]
-        for doc, score in results[:3]:
+        for doc, score in results[:7]:
             if doc['type'] == 'section':
                 lines.append(f"• {doc['title']} (score {score:.2f})")
             else:
