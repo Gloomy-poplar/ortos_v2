@@ -25,6 +25,23 @@ from services.consultation_service import ConsultationService
 from services.appointment_service import AppointmentService
 
 
+def handle_greeting(question: str) -> Optional[str]:
+    """Обрабатывает приветствия"""
+    import random
+    greetings = ['привет', 'добрый день', 'добрый вечер',
+                 'доброе утро', 'здравствуйте', 'здраствуйте']
+    
+    if any(greeting in question.lower() for greeting in greetings):
+        responses = [
+            "Добрый день! 👋 Чем могу помочь?",
+            "Здравствуйте! Рад вас видеть. Какой вопрос вас интересует?",
+            "Приветствую! Чем могу быть полезен?",
+            "Добрый день! Задавайте ваш вопрос - с радостью помогу!"
+        ]
+        return random.choice(responses)
+    return None
+
+
 class BotService:
     def __init__(self):
         self.client = Groq(api_key=Config.GROQ_API_KEY)
@@ -48,7 +65,7 @@ class BotService:
         question_clean = question.lower().strip()
 
         # 1. Приветствия
-        greeting_response = self._handle_greeting(question)
+        greeting_response = handle_greeting(question)
         if greeting_response:
             return greeting_response
 
@@ -439,22 +456,7 @@ class BotService:
             print(f"❌ Ошибка общей консультации: {e}")
             return error_msg
 
-    def _handle_greeting(self, question: str) -> Optional[str]:
-        """Обрабатывает приветствия естественно"""
-        greetings = ['привет', 'добрый день', 'добрый вечер',
-                     'доброе утро', 'здравствуйте', 'здраствуйте']
 
-        if any(greeting in question.lower() for greeting in greetings):
-            responses = [
-                "Добрый день! 👋 Чем могу помочь?",
-                "Здравствуйте! Рад вас видеть. Какой вопрос вас интересует?",
-                "Приветствую! Чем могу быть полезен?",
-                "Добрый день! Задавайте ваш вопрос - с радостью помогу!"
-            ]
-            import random
-            return random.choice(responses)
-
-        return None
 
 
 class EmbeddingsBotService:
@@ -531,6 +533,12 @@ class EmbeddingsBotService:
 
     def process_question(self, question: str, user_id: str = "telegram") -> str:
         print(f"📝 [EmbeddingsBotService] Получен вопрос от {user_id}: {question}")
+        
+        greeting_response = handle_greeting(question)
+        if greeting_response:
+            print(f"👋 Обнаружено приветствие")
+            return greeting_response
+        
         if not self._ensure_initialized():
             print("⏳ EmbeddingsService еще инициализируется")
             return "🔄 Бот запускается, попробуйте еще раз через минуту."
