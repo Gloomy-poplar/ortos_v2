@@ -1,6 +1,11 @@
 app = "ortos-v2"  # ← ЗАМЕНИ НА СВОЁ!
 primary_region = "iad"
 
+# ← 24/7 режим
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
 # ← ВАЖНО: ИСПОЛЬЗУЕМ DOCKERFILE, НЕ NIXPACKS!
 [build]
   dockerfile = "Dockerfile"
@@ -11,14 +16,14 @@ primary_region = "iad"
   cpus = 1
   memory_mb = 3072
 
-# ← Запуск как фоновая задача (НЕ веб!)
+# ← Запуск как веб-приложение
 [processes]
-bot = "python app.py"
+web = "python app.py"
 
-# ← 24/7 режим
-auto_stop_machines = false
-auto_start_machines = true
-min_machines_running = 1
+# ← HTTP конфигурация
+[http_service]
+internal_port = 5000
+force_https = true
 
 # ← 10 ГБ для FAISS-индекса
 [[mounts]]
