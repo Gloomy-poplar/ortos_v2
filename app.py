@@ -55,8 +55,11 @@ def start_background_initialization():
             print("✅ Фоновая инициализация завершена")
         except Exception as e:
             print(f"❌ Ошибка фоновой инициализации: {e}")
+            import traceback
+            traceback.print_exc()
 
     thread = threading.Thread(target=init_thread, daemon=True)
+    thread.daemon = True
     thread.start()
 
 
@@ -362,10 +365,18 @@ def bitrix_debug():
 # Остальные маршруты...
 
 
+@app.route('/health')
+def health_check():
+    """Health check для Fly.io"""
+    return jsonify({"status": "ok", "embeddings_ready": embeddings_bot_service is not None}), 200
+
+
 @app.route('/')
 def home():
-    return """
+    status = "✅ Готов" if embeddings_bot_service else "⏳ Инициализируется (обновите через 30с)"
+    return f"""
     <h1>🤖 Консультант по индивидуальным стелькам ORTOS</h1>
+    <p style="color: #666; font-size: 14px;">Статус: {status}</p>
     
     <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; margin: 20px 0;">
     <h3>📱 Telegram бот:</h3>
@@ -395,4 +406,5 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🌐 Starting server on port {port}...")
     start_background_initialization()
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print("✅ Server ready for requests (background initialization continues)")
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
