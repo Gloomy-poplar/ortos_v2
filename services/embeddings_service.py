@@ -37,15 +37,23 @@ class EmbeddingsService:
             __file__), "..", "data", "knowledge_base.json"),
         cache_dir: Optional[str] = None,
     ):
-        if cache_dir:
-            os.environ["HF_HOME"] = cache_dir
+        cache_dir = cache_dir or os.environ.get("HF_HOME", "/data/huggingface")
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir, exist_ok=True)
+        os.environ["HF_HOME"] = cache_dir
 
         self.model_name = model_name
         self.knowledge_base_path = knowledge_base_path
+        self.cache_dir = cache_dir
 
         print(f"📥 Загружаем модель: {model_name}...")
+        print(f"💾 Кэш моделей: {cache_dir}")
         model_start = time.perf_counter()
-        self.model = SentenceTransformer(model_name, device="cpu")
+        self.model = SentenceTransformer(
+            model_name, 
+            device="cpu",
+            cache_folder=cache_dir
+        )
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
         model_elapsed = time.perf_counter() - model_start
         print(f"✅ Модель загружена за {model_elapsed:.2f}s. Размер вектора: {self.embedding_dim}")

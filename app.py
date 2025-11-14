@@ -32,11 +32,16 @@ _init_lock = threading.Lock()
 _init_started = False
 
 
-def get_embeddings_bot_service() -> EmbeddingsBotService:
+def get_embeddings_bot_service() -> Optional[EmbeddingsBotService]:
     global embeddings_bot_service
     if embeddings_bot_service is None:
-        print("🚀 Создаем экземпляр EmbeddingsBotService...")
-        embeddings_bot_service = EmbeddingsBotService()
+        try:
+            print("🚀 Создаем экземпляр EmbeddingsBotService...")
+            embeddings_bot_service = EmbeddingsBotService()
+        except Exception as e:
+            print(f"❌ Ошибка инициализации EmbeddingsBotService: {e}")
+            import traceback
+            traceback.print_exc()
     return embeddings_bot_service
 
 
@@ -79,9 +84,12 @@ def telegram_webhook(token):
 
         if text:
             service = get_embeddings_bot_service()
-            print("🧠 EmbeddingsBotService получен")
-            ai_response = service.process_question(
-                text, user_id=str(chat_id))
+            if service is None:
+                ai_response = "🔄 Бот запускается. Попробуйте ещё раз через минуту."
+            else:
+                print("🧠 EmbeddingsBotService получен")
+                ai_response = service.process_question(
+                    text, user_id=str(chat_id))
             log_message(user_name, chat_id, text, ai_response)
 
             print(f"📤 Отправляем ответ в Telegram: {ai_response[:100]}")
@@ -190,12 +198,16 @@ def handle_bitrix_message(data):
         print("🤖 Ignoring command")
         return jsonify({"status": "ignored"}), 200
 
-    # Обрабатываем через AI бота
     print(f"🤖 Processing message through AI...")
     try:
-        ai_response = bot_service.process_question(
-            message, user_id=str(user_id or dialog_id))
-        print(f"🤖 AI Response: {ai_response[:100]}...")
+        service = get_embeddings_bot_service()
+        if service is not None:
+            ai_response = service.process_question(
+                message, user_id=str(user_id or dialog_id))
+            print(f"🤖 AI Response: {ai_response[:100]}...")
+        else:
+            ai_response = "🔄 Бот запускается. Попробуйте позже."
+            print("⏳ EmbeddingsBotService ещё инициализируется")
     except Exception as e:
         print(f"❌ AI processing error: {e}")
         ai_response = "Извините, произошла ошибка. Попробуйте позже."
