@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-app = "ortos-bot"
+app = "ortos-v2"
 primary_region = "ams"
 
 [build]
@@ -38,37 +37,3 @@ primary_region = "ams"
 
 [deploy]
   strategy = "rolling"
-=======
-app = "ortos-v2"  # ← ЗАМЕНИ НА СВОЁ!
-primary_region = "iad"
-
-# ← 24/7 режим
-auto_stop_machines = false
-auto_start_machines = true
-min_machines_running = 1
-
-# ← ВАЖНО: ИСПОЛЬЗУЕМ DOCKERFILE, НЕ NIXPACKS!
-[build]
-  dockerfile = "Dockerfile"
-
-# ← 1 CPU, 3 ГБ RAM
-[[vm]]
-  cpu_kind = "shared"
-  cpus = 1
-  memory_mb = 3072
-
-# ← Запуск как веб-приложение
-[processes]
-web = "python app.py"
-
-# ← HTTP конфигурация
-[http_service]
-internal_port = 5000
-force_https = true
-
-# ← 10 ГБ для FAISS-индекса
-[[mounts]]
-  source = "faiss_data"
-  destination = "/data"
-  initial_size = "10GB"
->>>>>>> ef9c957e9dedbd365caa120103faeabf58c06365
