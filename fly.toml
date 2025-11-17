@@ -40,8 +40,8 @@ primary_region = "ams"
 
 [[vm]]
   cpu_kind = "shared"
-  cpus = 2
-  memory_mb = 2048
+  cpus = 4
+  memory_mb = 3048
 
 [deploy]
   strategy = "rolling"
